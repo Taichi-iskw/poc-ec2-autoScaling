@@ -22,22 +22,9 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     const domainName = this.node.tryGetContext("domainName") || "example.com";
     const appName = this.node.tryGetContext("appName") || "myapp";
 
-    // VPC with public and private subnets
-    const vpc = new ec2.Vpc(this, "AppVPC", {
-      maxAzs: 2,
-      natGateways: 1, // Cost optimization: single NAT gateway
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: "Public",
-          subnetType: ec2.SubnetType.PUBLIC,
-        },
-        {
-          cidrMask: 24,
-          name: "Private",
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-        },
-      ],
+    // Use existing default VPC
+    const vpc = ec2.Vpc.fromLookup(this, "DefaultVPC", {
+      isDefault: true,
     });
 
     // S3 bucket for deployment artifacts
