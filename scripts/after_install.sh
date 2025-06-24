@@ -7,32 +7,52 @@ set -e
 
 echo "Starting AfterInstall hook..."
 
-# Set proper permissions for web files
+# Create app directory if it doesn't exist
+mkdir -p /opt/app
+
+# Set proper permissions for application files
 echo "Setting file permissions..."
-chown -R apache:apache /var/www/html
-chmod -R 755 /var/www/html
+chown -R ec2-user:ec2-user /opt/app
+chmod -R 755 /opt/app
 
-# Create necessary directories if they don't exist
-mkdir -p /var/log/application
-chown apache:apache /var/log/application
-
-# Configure Apache if needed
-if [ ! -f /etc/httpd/conf.d/app.conf ]; then
-    echo "Creating Apache configuration..."
-    cat > /etc/httpd/conf.d/app.conf << 'EOF'
-<VirtualHost *:80>
-    DocumentRoot /var/www/html
-    ServerName localhost
-    
-    <Directory /var/www/html>
-        AllowOverride All
-        Require all granted
-    </Directory>
-    
-    ErrorLog /var/log/application/error.log
-    CustomLog /var/log/application/access.log combined
-</VirtualHost>
-EOF
+# Install uv if not already installed
+if ! command -v uv &> /dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    source /home/ec2-user/.cargo/env
 fi
+
+# Install Python dependencies using uv
+echo "Installing Python dependencies with uv..."
+cd /opt/app
+if [ -f "pyproject.toml" ]; then
+    # Use uv to install dependencies
+    uv sync --frozen
+fi
+
+# Create systemd service file for Flask app
+echo "Creating systemd service file..."
+cat > /etc/systemd/system/flask-app.service << 'EOF'
+[Unit]
+Description=Flask Application
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/app
+Environment=PATH=/opt/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=FLASK_APP=app.py
+Environment=FLASK_ENV=production
+ExecStart=/opt/app/.venv/bin/gunicorn --bind 0.0.0.0:8080 app:app
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd daemon
+systemctl daemon-reload
 
 echo "AfterInstall hook completed successfully." 

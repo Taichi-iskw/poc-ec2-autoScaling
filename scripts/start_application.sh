@@ -7,16 +7,16 @@ set -e
 
 echo "Starting ApplicationStart hook..."
 
-# Start Apache HTTP Server
-echo "Starting Apache HTTP Server..."
-systemctl start httpd
-systemctl enable httpd
+# Start Flask application
+echo "Starting Flask application..."
+systemctl start flask-app
+systemctl enable flask-app
 
 # Verify the service is running
-if systemctl is-active --quiet httpd; then
-    echo "Apache HTTP Server started successfully."
+if systemctl is-active --quiet flask-app; then
+    echo "Flask application started successfully."
 else
-    echo "Failed to start Apache HTTP Server."
+    echo "Failed to start Flask application."
     exit 1
 fi
 

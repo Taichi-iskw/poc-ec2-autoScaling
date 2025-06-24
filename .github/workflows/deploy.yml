@@ -33,8 +33,7 @@ jobs:
         run: |
           # Create a deployment package
           mkdir -p deployment
-          cp -r *.html *.css *.js deployment/ 2>/dev/null || true
-          cp -r assets deployment/ 2>/dev/null || true
+          cp -r app/* deployment/
           cp appspec.yml deployment/
           cp -r scripts deployment/
 

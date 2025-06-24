@@ -7,16 +7,16 @@ set -e
 
 echo "Starting ValidateService hook..."
 
-# Check if Apache is running
-if ! systemctl is-active --quiet httpd; then
-    echo "ERROR: Apache HTTP Server is not running."
+# Check if Flask app is running
+if ! systemctl is-active --quiet flask-app; then
+    echo "ERROR: Flask application is not running."
     exit 1
 fi
 
 # Test the application endpoint
 echo "Testing application endpoint..."
 for i in {1..10}; do
-    if curl -f -s http://localhost/ > /dev/null; then
+    if curl -f -s http://localhost:8080/ > /dev/null; then
         echo "Application is responding correctly."
         break
     else
@@ -30,11 +30,12 @@ for i in {1..10}; do
     fi
 done
 
-# Check if the application is serving the expected content
-if curl -s http://localhost/ | grep -q "Hello from EC2 Auto Scaling Group"; then
-    echo "Application content is correct."
+# Test the health endpoint
+echo "Testing health endpoint..."
+if curl -f -s http://localhost:8080/api/health | grep -q "healthy"; then
+    echo "Health endpoint is working correctly."
 else
-    echo "ERROR: Application content is not as expected."
+    echo "ERROR: Health endpoint is not working as expected."
     exit 1
 fi
 

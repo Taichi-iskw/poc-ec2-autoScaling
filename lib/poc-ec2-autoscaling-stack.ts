@@ -102,17 +102,24 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     userData.addCommands(
       "#!/bin/bash",
       "yum update -y",
-      "yum install -y httpd",
-      "systemctl start httpd",
-      "systemctl enable httpd",
-      'echo "<h1>Hello from EC2 Auto Scaling Group!</h1>" > /var/www/html/index.html',
+      "yum install -y python3 python3-pip git curl",
+      "pip3 install --upgrade pip",
+      // Install uv
+      "curl -LsSf https://astral.sh/uv/install.sh | sh",
+      "source /home/ec2-user/.cargo/env",
       // Install CodeDeploy agent
       "yum install -y ruby wget",
       "wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install",
       "chmod +x ./install",
       "./install auto",
       "systemctl start codedeploy-agent",
-      "systemctl enable codedeploy-agent"
+      "systemctl enable codedeploy-agent",
+      // Set instance metadata
+      "export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
+      "export AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+      "echo 'export INSTANCE_ID=$INSTANCE_ID' >> /home/ec2-user/.bashrc",
+      "echo 'export AWS_REGION=$AWS_REGION' >> /home/ec2-user/.bashrc",
+      "echo 'source /home/ec2-user/.cargo/env' >> /home/ec2-user/.bashrc"
     );
 
     // Launch Template
@@ -184,7 +191,7 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     // Target Group
     const targetGroup = new elbv2.ApplicationTargetGroup(this, "TargetGroup", {
       vpc,
-      port: 80,
+      port: 8080,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
       healthCheck: {
