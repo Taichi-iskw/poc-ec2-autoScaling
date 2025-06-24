@@ -1,0 +1,90 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  APPLICATION_NAME: myapp
+  DEPLOYMENT_GROUP_NAME: myapp-deployment-group
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create deployment package
+        run: |
+          # Create a deployment package
+          mkdir -p deployment
+          cp -r *.html *.css *.js deployment/ 2>/dev/null || true
+          cp -r assets deployment/ 2>/dev/null || true
+          cp appspec.yml deployment/
+          cp -r scripts deployment/
+
+          # Create zip file
+          cd deployment
+          zip -r ../app.zip .
+          cd ..
+
+      - name: Upload to S3
+        run: |
+          # Get the deployment bucket name from SSM Parameter Store
+          BUCKET_NAME=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/deployment-bucket" --query 'Parameter.Value' --output text)
+
+          # Upload the deployment package
+          aws s3 cp app.zip s3://$BUCKET_NAME/app-$(date +%Y%m%d-%H%M%S).zip
+
+      - name: Deploy to EC2
+        run: |
+          # Get the deployment bucket name from SSM Parameter Store
+          BUCKET_NAME=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/deployment-bucket" --query 'Parameter.Value' --output text)
+
+          # Get the latest deployment package
+          LATEST_PACKAGE=$(aws s3 ls s3://$BUCKET_NAME/ | grep app- | sort | tail -1 | awk '{print $4}')
+
+          # Create deployment
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name ${APPLICATION_NAME}-app \
+            --deployment-group-name ${DEPLOYMENT_GROUP_NAME} \
+            --s3-location bucket=$BUCKET_NAME,key=$LATEST_PACKAGE,bundleType=zip \
+            --query 'deploymentId' \
+            --output text)
+
+          echo "Deployment ID: $DEPLOYMENT_ID"
+
+          # Wait for deployment to complete
+          echo "Waiting for deployment to complete..."
+          aws deploy wait deployment-successful --deployment-id $DEPLOYMENT_ID
+
+          if [ $? -eq 0 ]; then
+            echo "Deployment completed successfully!"
+          else
+            echo "Deployment failed!"
+            exit 1
+          fi
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Deployment completed successfully!"
+          else
+            echo "❌ Deployment failed!"
+          fi
