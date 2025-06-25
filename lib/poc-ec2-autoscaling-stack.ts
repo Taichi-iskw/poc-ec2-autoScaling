@@ -31,7 +31,8 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     const deploymentBucket = new s3.Bucket(this, "DeploymentBucket", {
       bucketName: `${appName}-deployment-${this.account}-${this.region}`,
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
       lifecycleRules: [
         {
           id: "DeleteOldVersions",
@@ -146,7 +147,7 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     const asg = new autoscaling.AutoScalingGroup(this, "ASG", {
       vpc,
       vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        subnetType: ec2.SubnetType.PUBLIC,
       },
       launchTemplate,
       minCapacity: 2,
@@ -246,6 +247,7 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     const logGroup = new logs.LogGroup(this, "ApplicationLogGroup", {
       logGroupName: `/aws/ec2/${appName}`,
       retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // SSM Parameter for domain name
