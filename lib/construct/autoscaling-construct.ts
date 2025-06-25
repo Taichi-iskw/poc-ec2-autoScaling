@@ -32,6 +32,9 @@ export class AutoscalingConstruct extends Construct {
       cooldown: cdk.Duration.seconds(300),
     });
 
+    // Set removal policy to destroy resources when stack is deleted
+    this.asg.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
     // Auto Scaling policies
     const scaleUpPolicy = new autoscaling.TargetTrackingScalingPolicy(this, "ScaleUpPolicy", {
       autoScalingGroup: this.asg,
