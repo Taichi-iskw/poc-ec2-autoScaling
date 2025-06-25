@@ -117,11 +117,18 @@ cdk deploy --all
 ├── lib/
 │   ├── poc-ec2-autoscaling-stack.ts    # メインインフラスタック
 │   └── github-actions-oidc-stack.ts    # GitHub Actions OIDCスタック
-├── scripts/                            # CodeDeployスクリプト
-│   ├── before_install.sh
-│   ├── after_install.sh
-│   ├── start_application.sh
-│   └── validate_service.sh
+├── scripts/                            # 各種スクリプト
+│   ├── codedeploy/                    # CodeDeploy用スクリプト
+│   │   ├── before_install.sh
+│   │   ├── after_install.sh
+│   │   ├── start_application.sh
+│   │   └── validate_service.sh
+│   └── tools/                         # 作業効率化スクリプト
+│       ├── connect-to-asg.sh          # SSM接続スクリプト
+│       ├── list-asg-instances.sh      # インスタンス一覧表示スクリプト
+│       └── create-oidc-provider.sh    # OIDCプロバイダー作成補助
+├── docs/
+│   └── ssm-connection-guide.md        # SSM接続ガイド
 ├── .github/workflows/
 │   └── deploy.yml                      # GitHub Actionsワークフロー
 ├── appspec.yml                         # CodeDeploy設定
@@ -131,6 +138,44 @@ cdk deploy --all
 ├── cdk.json
 └── README.md
 ```
+
+## SSM Session Manager での接続
+
+### 基本的な接続方法
+
+Auto Scaling Group の EC2 インスタンスに SSM Session Manager で接続できます：
+
+```bash
+# インスタンス一覧を表示
+./scripts/list-asg-instances.sh
+
+# 最初のインスタンスに接続
+./scripts/connect-to-asg.sh
+
+# 特定のインスタンスに接続（インデックス指定）
+./scripts/connect-to-asg.sh "ASG_NAME" 1
+```
+
+### 手動での接続
+
+```bash
+# Auto Scaling Group内のインスタンスIDを取得
+INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names "your-asg-name" \
+  --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+  --output text | head -1)
+
+# SSM Session Managerで接続
+aws ssm start-session --target $INSTANCE_ID
+```
+
+### 接続の前提条件
+
+- EC2 インスタンスに`AmazonSSMManagedInstanceCore`ポリシーが付与されている
+- インスタンスがインターネットにアクセス可能（NAT Gateway または VPC エンドポイント）
+- ユーザーに`ssm:StartSession`権限がある
+
+詳細な接続方法は[SSM 接続ガイド](docs/ssm-connection-guide.md)を参照してください。
 
 ## デプロイメントフロー
 
@@ -180,8 +225,14 @@ cdk deploy --all
    - Auto Scaling ポリシーの設定を確認
 
 3. **SSL 証明書エラー**
+
    - ACM 証明書の検証状態を確認
    - Route 53 の設定を確認
+
+4. **SSM 接続できない**
+   - インスタンスの SSM エージェント状態を確認
+   - IAM 権限を確認
+   - ネットワーク設定（NAT Gateway/VPC エンドポイント）を確認
 
 ## ライセンス
 
