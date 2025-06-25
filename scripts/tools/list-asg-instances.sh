@@ -6,7 +6,7 @@
 set -e
 
 # デフォルトのAuto Scaling Group名（実際の環境に合わせて変更）
-DEFAULT_ASG_NAME="poc-ec2-autoscaling-AutoscalingConstruct-ASG-XXXXXXXXX"
+DEFAULT_ASG_NAME="PocEc2AutoScalingStack-AutoscalingConstructASG11734274-fAUKtDZpXIlo"
 
 # 引数からAuto Scaling Group名を取得、なければデフォルトを使用
 ASG_NAME=${1:-$DEFAULT_ASG_NAME}

@@ -40,4 +40,10 @@ def info():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    # Use waitress for production deployment
+    from waitress import serve
+
+    print("Starting Flask application with Waitress server...")
+    print(f"Instance ID: {os.environ.get('INSTANCE_ID', 'unknown')}")
+    print(f"AWS Region: {os.environ.get('AWS_REGION', 'unknown')}")
+    serve(app, host="0.0.0.0", port=8080, threads=4)

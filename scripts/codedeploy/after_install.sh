@@ -30,11 +30,11 @@ if [ -f "pyproject.toml" ]; then
     uv sync --frozen
 fi
 
-# Create systemd service file for Flask app
+# Create systemd service file for Flask app with waitress
 echo "Creating systemd service file..."
 cat > /etc/systemd/system/flask-app.service << 'EOF'
 [Unit]
-Description=Flask Application
+Description=Flask Application with Waitress
 After=network.target
 
 [Service]
@@ -44,7 +44,7 @@ WorkingDirectory=/opt/app
 Environment=PATH=/opt/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=FLASK_APP=app.py
 Environment=FLASK_ENV=production
-ExecStart=/opt/app/.venv/bin/gunicorn --bind 0.0.0.0:8080 app:app
+ExecStart=/opt/app/.venv/bin/python app.py
 Restart=always
 RestartSec=10
 

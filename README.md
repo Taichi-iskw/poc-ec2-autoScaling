@@ -49,6 +49,21 @@
    - EC2/ALB 等のログ出力
    - 1 ヶ月間保持
 
+### アプリケーション技術スタック
+
+- **Web Framework**: Flask 2.3.3+
+- **WSGI Server**: Waitress 2.1.2+ (本番環境用)
+- **Package Manager**: uv (高速 Python パッケージマネージャー)
+- **Python Version**: 3.8+
+
+**Waitress の利点:**
+
+- 純粋な Python 実装で外部依存関係なし
+- 本番環境に適した安定性と信頼性
+- クロスプラットフォーム対応
+- シンプルな設定
+- 適度なトラフィックに適した性能
+
 ### セキュリティ・権限
 
 - **EC2 の IAM ロール**: S3・SSM・CloudWatch Logs へのアクセス権限
