@@ -125,7 +125,7 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
 
     // Launch Template
     const launchTemplate = new ec2.LaunchTemplate(this, "LaunchTemplate", {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
       machineImage: new ec2.AmazonLinuxImage({
         generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
       }),
@@ -150,9 +150,9 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
         subnetType: ec2.SubnetType.PUBLIC,
       },
       launchTemplate,
-      minCapacity: 2,
-      maxCapacity: 10,
-      desiredCapacity: 2,
+      minCapacity: 1,
+      maxCapacity: 2,
+      desiredCapacity: 1,
       healthCheck: autoscaling.HealthCheck.elb({
         grace: cdk.Duration.seconds(300),
       }),
