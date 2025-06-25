@@ -15,14 +15,12 @@ interface OidcForGithubProps {
 }
 
 export function createGithubOidcRole(scope: Construct, props: OidcForGithubProps): iam.Role {
-  // OIDC Identity Provider for GitHub Actions
-  const githubOidcProvider = new iam.OpenIdConnectProvider(scope, "GitHubOidcProvider", {
-    url: "https://token.actions.githubusercontent.com",
-    clientIds: ["sts.amazonaws.com"],
-    thumbprints: [
-      "6938fd4d98bab03faadb97b34396831e3780aea1", // GitHub Actions thumbprint
-    ],
-  });
+  // Reference existing OIDC Identity Provider for GitHub Actions
+  const githubOidcProvider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+    scope,
+    "GitHubOidcProvider",
+    `arn:aws:iam::${props.account}:oidc-provider/token.actions.githubusercontent.com`
+  );
 
   // IAM Role for GitHub Actions
   const githubActionsRole = new iam.Role(scope, "GitHubActionsRole", {
