@@ -87,3 +87,6 @@ jspm_packages/
 # Temporary folders
 tmp/
 temp/ 
+
+# cdk.context.json
+cdk.context.json
