@@ -1,13 +1,10 @@
 name: Deploy to AWS
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-northeast-1
   APPLICATION_NAME: myapp
   DEPLOYMENT_GROUP_NAME: myapp-deployment-group
 
