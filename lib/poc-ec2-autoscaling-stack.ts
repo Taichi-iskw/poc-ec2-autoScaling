@@ -91,6 +91,7 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
       appName,
       deploymentBucket: s3Construct.deploymentBucket,
       codeDeployApp: codedeployConstruct.codeDeployApp,
+      codeDeployDeploymentGroup: codedeployConstruct.deploymentGroup,
       logGroup: monitoringConstruct.logGroup,
       region: this.region,
       account: this.account,

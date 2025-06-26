@@ -9,6 +9,7 @@ interface OidcForGithubProps {
   appName: string;
   deploymentBucket: s3.IBucket;
   codeDeployApp: codedeploy.IServerApplication;
+  codeDeployDeploymentGroup: codedeploy.IServerDeploymentGroup;
   logGroup: logs.ILogGroup;
   region: string;
   account: string;
@@ -58,8 +59,21 @@ export function createGithubOidcRole(scope: Construct, props: OidcForGithubProps
         "codedeploy:StopDeployment",
         "codedeploy:GetDeploymentGroup",
         "codedeploy:ListDeployments",
+        "codedeploy:ListApplications",
+        "codedeploy:ListDeploymentGroups",
+        "codedeploy:ListDeploymentConfigs",
+        "codedeploy:GetDeploymentTarget",
+        "codedeploy:ListDeploymentTargets",
       ],
-      resources: [props.codeDeployApp.applicationArn, `${props.codeDeployApp.applicationArn}/*`],
+      resources: [
+        props.codeDeployApp.applicationArn,
+        `${props.codeDeployApp.applicationArn}/*`,
+        props.codeDeployDeploymentGroup.deploymentGroupArn,
+        `${props.codeDeployDeploymentGroup.deploymentGroupArn}/*`,
+        `arn:aws:codedeploy:${props.region}:${props.account}:deploymentconfig:*`,
+        `arn:aws:codedeploy:${props.region}:${props.account}:application:*`,
+        `arn:aws:codedeploy:${props.region}:${props.account}:deploymentgroup:*`,
+      ],
     })
   );
 
