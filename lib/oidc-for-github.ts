@@ -1,15 +1,12 @@
 import { Construct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as s3 from "aws-cdk-lib/aws-s3";
-import * as codedeploy from "aws-cdk-lib/aws-codedeploy";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as logs from "aws-cdk-lib/aws-logs";
 
 interface OidcForGithubProps {
   githubOwner: string;
   appName: string;
-  deploymentBucket: s3.IBucket;
-  codeDeployApp: codedeploy.IServerApplication;
-  codeDeployDeploymentGroup: codedeploy.IServerDeploymentGroup;
+  ecrRepository: ecr.IRepository;
   logGroup: logs.ILogGroup;
   region: string;
   account: string;
@@ -31,49 +28,39 @@ export function createGithubOidcRole(scope: Construct, props: OidcForGithubProps
       },
       StringLike: {
         // 特定のリポジトリのみに制限
-        "token.actions.githubusercontent.com:sub": `repo:${props.githubOwner}/${props.appName}:*`,
+        "token.actions.githubusercontent.com:sub": `repo:${props.githubOwner}/poc-ec2-autoScaling:*`,
+        // "token.actions.githubusercontent.com:sub": `repo:${props.githubOwner}/${props.appName}:*`,
       },
     }),
     description: `Role for GitHub Actions to deploy ${props.appName} application`,
   });
 
-  // Policy for S3 access (deployment artifacts)
+  // Policy for ECR access
   githubActionsRole.addToPolicy(
     new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-      resources: [props.deploymentBucket.bucketArn, `${props.deploymentBucket.bucketArn}/*`],
+      actions: ["ecr:GetAuthorizationToken"],
+      resources: ["*"],
     })
   );
 
-  // Policy for CodeDeploy access
+  // Policy for ECR repository access
   githubActionsRole.addToPolicy(
     new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        "codedeploy:GetApplication",
-        "codedeploy:GetDeployment",
-        "codedeploy:GetDeploymentConfig",
-        "codedeploy:RegisterApplicationRevision",
-        "codedeploy:CreateDeployment",
-        "codedeploy:StopDeployment",
-        "codedeploy:GetDeploymentGroup",
-        "codedeploy:ListDeployments",
-        "codedeploy:ListApplications",
-        "codedeploy:ListDeploymentGroups",
-        "codedeploy:ListDeploymentConfigs",
-        "codedeploy:GetDeploymentTarget",
-        "codedeploy:ListDeploymentTargets",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeRepositories",
+        "ecr:ListImages",
+        "ecr:TagResource",
       ],
-      resources: [
-        props.codeDeployApp.applicationArn,
-        `${props.codeDeployApp.applicationArn}/*`,
-        props.codeDeployDeploymentGroup.deploymentGroupArn,
-        `${props.codeDeployDeploymentGroup.deploymentGroupArn}/*`,
-        `arn:aws:codedeploy:${props.region}:${props.account}:deploymentconfig:*`,
-        `arn:aws:codedeploy:${props.region}:${props.account}:application:*`,
-        `arn:aws:codedeploy:${props.region}:${props.account}:deploymentgroup:*`,
-      ],
+      resources: [props.ecrRepository.repositoryArn, `${props.ecrRepository.repositoryArn}/*`],
     })
   );
 
@@ -92,6 +79,30 @@ export function createGithubOidcRole(scope: Construct, props: OidcForGithubProps
       effect: iam.Effect.ALLOW,
       actions: ["ssm:GetParameter", "ssm:GetParameters", "ssm:PutParameter", "ssm:DeleteParameter"],
       resources: [`arn:aws:ssm:${props.region}:${props.account}:parameter/${props.appName}/*`],
+    })
+  );
+
+  // Policy for SSM SendCommand (for deployment)
+  githubActionsRole.addToPolicy(
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations",
+        "ssm:DescribeInstanceInformation",
+        "ssm:ListInstances",
+      ],
+      resources: ["*"],
+    })
+  );
+
+  // Policy for Auto Scaling Group access
+  githubActionsRole.addToPolicy(
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ["autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeAutoScalingInstances"],
+      resources: ["*"],
     })
   );
 

@@ -2,12 +2,12 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as ssm from "aws-cdk-lib/aws-ssm";
-import * as s3 from "aws-cdk-lib/aws-s3";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 
 export interface MonitoringConstructProps {
   appName: string;
   domainName: string;
-  deploymentBucket: s3.Bucket;
+  ecrRepository: ecr.IRepository;
 }
 
 export class MonitoringConstruct extends Construct {
@@ -30,11 +30,11 @@ export class MonitoringConstruct extends Construct {
       description: "Domain name for the application",
     });
 
-    // SSM Parameter for deployment bucket name
-    new ssm.StringParameter(this, "DeploymentBucketParameter", {
-      parameterName: `/${props.appName}/deployment-bucket`,
-      stringValue: props.deploymentBucket.bucketName,
-      description: "S3 bucket name for deployment artifacts",
+    // SSM Parameter for ECR repository URI
+    new ssm.StringParameter(this, "EcrRepositoryParameter", {
+      parameterName: `/${props.appName}/ecr-repository-uri`,
+      stringValue: props.ecrRepository.repositoryUri,
+      description: "ECR repository URI for Docker images",
     });
   }
 }

@@ -6,7 +6,6 @@ on:
 env:
   AWS_REGION: ap-northeast-1
   APPLICATION_NAME: myapp
-  DEPLOYMENT_GROUP_NAME: myapp-deployment-group
 
 jobs:
   deploy:
@@ -26,55 +25,112 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create deployment package
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get ECR repository name
+        id: ecr
         run: |
-          # Create a deployment package
-          mkdir -p deployment
-          cp -r app/* deployment/
-          cp appspec.yml deployment/
-          cp -r scripts deployment/
+          ECR_URI=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/ecr-repository-uri" --query 'Parameter.Value' --output text)
+          # Extract repository name from full URI (e.g., 123456789012.dkr.ecr.region.amazonaws.com/myapp-app -> myapp-app)
+          REPO_NAME=$(echo $ECR_URI | sed 's/.*\///')
+          echo "ecr_uri=$REPO_NAME" >> $GITHUB_OUTPUT
+          echo "Full ECR URI: $ECR_URI"
+          echo "Repository name: $REPO_NAME"
 
-          # Create zip file
-          cd deployment
-          zip -r ../app.zip .
-          cd ..
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Upload to S3
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.ecr.outputs.ecr_uri }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Get the deployment bucket name from SSM Parameter Store
-          BUCKET_NAME=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/deployment-bucket" --query 'Parameter.Value' --output text)
+          # Build a docker container and push it to ECR
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./app
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./app
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-          # Upload the deployment package
-          aws s3 cp app.zip s3://$BUCKET_NAME/app-$(date +%Y%m%d-%H%M%S).zip
-
-      - name: Deploy to EC2
+      - name: Deploy to EC2 instances
         run: |
-          # Get the deployment bucket name from SSM Parameter Store
-          BUCKET_NAME=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/deployment-bucket" --query 'Parameter.Value' --output text)
+          # Get Auto Scaling Group name from SSM parameter
+          ASG_NAME=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/auto-scaling-group-name" --query 'Parameter.Value' --output text)
+          echo "Using Auto Scaling Group: $ASG_NAME"
 
-          # Get the latest deployment package
-          LATEST_PACKAGE=$(aws s3 ls s3://$BUCKET_NAME/ | grep app- | sort | tail -1 | awk '{print $4}')
+          # Get Auto Scaling Group details
+          echo "Checking Auto Scaling Group: $ASG_NAME"
+          aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names $ASG_NAME \
+            --region $AWS_REGION \
+            --output table
 
-          # Create deployment
-          DEPLOYMENT_ID=$(aws deploy create-deployment \
-            --application-name ${APPLICATION_NAME}-app \
-            --deployment-group-name ${DEPLOYMENT_GROUP_NAME} \
-            --s3-location bucket=$BUCKET_NAME,key=$LATEST_PACKAGE,bundleType=zip \
-            --query 'deploymentId' \
+          # Get Auto Scaling Group instances
+          ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names $ASG_NAME \
+            --region $AWS_REGION \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
             --output text)
 
-          echo "Deployment ID: $DEPLOYMENT_ID"
+          echo "Found instances: $ASG_INSTANCES"
 
-          # Wait for deployment to complete
-          echo "Waiting for deployment to complete..."
-          aws deploy wait deployment-successful --deployment-id $DEPLOYMENT_ID
-
-          if [ $? -eq 0 ]; then
-            echo "Deployment completed successfully!"
-          else
-            echo "Deployment failed!"
+          if [ -z "$ASG_INSTANCES" ] || [ "$ASG_INSTANCES" = "None" ]; then
+            echo "No instances found in Auto Scaling Group"
+            echo "Checking all instances in ASG:"
+            aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-names $ASG_NAME \
+              --region $AWS_REGION \
+              --query 'AutoScalingGroups[0].Instances[*].[InstanceId,LifecycleState,HealthStatus]' \
+              --output json
             exit 1
           fi
+
+          # Get full ECR URI for deployment
+          ECR_URI=$(aws ssm get-parameter --name "/${APPLICATION_NAME}/ecr-repository-uri" --query 'Parameter.Value' --output text)
+          IMAGE_TAG=${{ github.sha }}
+
+          # Deploy to each instance using SSM
+          for INSTANCE_ID in $ASG_INSTANCES; do
+            echo "Deploying to instance: $INSTANCE_ID"
+            
+            # Send command to instance using the deploy script
+            COMMAND_ID=$(aws ssm send-command \
+                --instance-ids $INSTANCE_ID \
+                --document-name "AWS-RunShellScript" \
+                --parameters "commands=['bash /opt/app/deploy.sh $ECR_URI $IMAGE_TAG']" \
+                --region $AWS_REGION \
+                --query 'Command.CommandId' \
+                --output text)
+
+            echo "Command sent to $INSTANCE_ID with ID: $COMMAND_ID"
+            
+            # Wait for command completion
+            echo "Waiting for deployment to complete..."
+            aws ssm wait command-executed \
+                --command-id $COMMAND_ID \
+                --instance-id $INSTANCE_ID \
+                --region $AWS_REGION
+
+            # Get command output
+            OUTPUT=$(aws ssm get-command-invocation \
+                --command-id $COMMAND_ID \
+                --instance-id $INSTANCE_ID \
+                --region $AWS_REGION)
+
+            STATUS=$(echo $OUTPUT | jq -r '.Status')
+            
+            if [ "$STATUS" = "Success" ]; then
+                echo "Deployment successful on $INSTANCE_ID"
+            else
+                echo "Deployment failed on $INSTANCE_ID"
+                echo $OUTPUT | jq -r '.StandardErrorContent'
+                exit 1
+            fi
+          done
 
       - name: Notify deployment status
         if: always()

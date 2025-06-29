@@ -15,9 +15,9 @@
     ]
   },
   "context": {
-    "domainName": "example.com",
+    "domainName": "iskw-poc.click",
     "appName": "myapp",
-    "githubOwner": "your-username",
+    "githubOwner": "Taichi-iskw",
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],

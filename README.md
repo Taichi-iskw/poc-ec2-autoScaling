@@ -1,6 +1,6 @@
-# EC2 Auto Scaling Infrastructure with CDK
+# EC2 Auto Scaling Infrastructure with CDK (Docker + ECR)
 
-このプロジェクトは、AWS CDK TypeScript を使用して EC2 Auto Scaling インフラストラクチャを構築する POC です。
+このプロジェクトは、AWS CDK TypeScript を使用して EC2 Auto Scaling インフラストラクチャを構築する POC です。Docker コンテナと ECR を使用したモダンなデプロイメント構成を採用しています。
 
 ## インフラ構成
 
@@ -16,6 +16,7 @@
    - 最小 2 台、最大 10 台のインスタンス
    - CPU 使用率 70%でスケールアウト
    - プライベートサブネットに配置
+   - Docker コンテナでアプリケーション実行
 
 3. **Application Load Balancer (ALB)**
 
@@ -28,45 +29,41 @@
    - ドメイン管理・DNS ルーティング
    - ALB へのエイリアスレコード
 
-5. **S3**
+5. **ECR (Elastic Container Registry)**
 
-   - デプロイ用アーティファクト保存バケット
-   - バージョニング有効
-   - 30 日後に古いバージョンを削除
+   - Docker イメージの保存・管理
+   - イメージスキャン有効
+   - ライフサイクルポリシー（古いイメージの自動削除）
 
-6. **CodeDeploy**
-
-   - S3 のアーティファクトを EC2 Auto Scaling グループにデプロイ
-   - ローリングアップデート対応
-   - 自動ロールバック機能
-
-7. **Systems Manager (SSM)**
+6. **Systems Manager (SSM)**
 
    - EC2 へのセッションマネージャー接続
+   - SSM コマンドによるデプロイメント
    - パラメータ管理
 
-8. **CloudWatch Logs**
+7. **CloudWatch Logs**
    - EC2/ALB 等のログ出力
    - 1 ヶ月間保持
 
 ### アプリケーション技術スタック
 
-- **Web Framework**: Flask 2.3.3+
-- **WSGI Server**: Waitress 2.1.2+ (本番環境用)
-- **Package Manager**: uv (高速 Python パッケージマネージャー)
-- **Python Version**: 3.8+
+- **Web Framework**: Flask 3.0.0+
+- **WSGI Server**: Waitress 3.0.0+ (本番環境用)
+- **Container**: Docker
+- **Container Orchestration**: Docker Compose
+- **Python Version**: 3.11+
 
-**Waitress の利点:**
+**Docker の利点:**
 
-- 純粋な Python 実装で外部依存関係なし
-- 本番環境に適した安定性と信頼性
-- クロスプラットフォーム対応
-- シンプルな設定
-- 適度なトラフィックに適した性能
+- 環境の一貫性
+- 簡単なスケーリング
+- 高速なデプロイメント
+- 依存関係の分離
+- 本番環境との差異の最小化
 
 ### セキュリティ・権限
 
-- **EC2 の IAM ロール**: S3・SSM・CloudWatch Logs へのアクセス権限
+- **EC2 の IAM ロール**: ECR・SSM・CloudWatch Logs へのアクセス権限
 - **セキュリティグループ**:
   - EC2: ALB からのトラフィックのみ許可
   - ALB: 443（HTTPS）のみインバウンド許可
@@ -80,6 +77,7 @@
 - Node.js 18 以上
 - AWS CLI 設定済み
 - AWS CDK CLI インストール済み
+- Docker（ローカル開発用）
 
 ### 1. 依存関係のインストール
 
@@ -131,23 +129,34 @@ cdk deploy --all
 │   └── poc-ec2-autoscaling.ts          # CDKアプリケーションエントリーポイント
 ├── lib/
 │   ├── poc-ec2-autoscaling-stack.ts    # メインインフラスタック
-│   └── github-actions-oidc-stack.ts    # GitHub Actions OIDCスタック
+│   ├── oidc-for-github.ts              # GitHub Actions OIDC設定
+│   └── construct/                      # CDK Constructs
+│       ├── ecr-construct.ts            # ECR Construct
+│       ├── network-construct.ts        # VPC/Network Construct
+│       ├── iam-construct.ts            # IAM Construct
+│       ├── ec2-construct.ts            # EC2 Construct
+│       ├── autoscaling-construct.ts    # Auto Scaling Construct
+│       ├── loadbalancer-construct.ts   # ALB Construct
+│       ├── dns-construct.ts            # Route 53 Construct
+│       └── monitoring-construct.ts     # CloudWatch Construct
+├── app/                                # アプリケーションコード
+│   ├── app.py                          # Flask アプリケーション
+│   ├── templates/                      # HTML テンプレート
+│   ├── Dockerfile                      # Docker イメージ定義
+│   ├── docker-compose.yml              # Docker Compose 設定
+│   ├── requirements.txt                # Python 依存関係
+│   └── .dockerignore                   # Docker 除外ファイル
 ├── scripts/                            # 各種スクリプト
-│   ├── codedeploy/                    # CodeDeploy用スクリプト
-│   │   ├── before_install.sh
-│   │   ├── after_install.sh
-│   │   ├── start_application.sh
-│   │   └── validate_service.sh
-│   └── tools/                         # 作業効率化スクリプト
-│       ├── connect-to-asg.sh          # SSM接続スクリプト
-│       ├── list-asg-instances.sh      # インスタンス一覧表示スクリプト
-│       └── create-oidc-provider.sh    # OIDCプロバイダー作成補助
+│   ├── deploy.sh                       # ローカルデプロイスクリプト
+│   ├── ec2-deploy.sh                   # EC2 デプロイスクリプト
+│   └── tools/                          # 作業効率化スクリプト
+│       ├── connect-to-asg.sh           # SSM接続スクリプト
+│       ├── list-asg-instances.sh       # インスタンス一覧表示スクリプト
+│       └── create-oidc-provider.sh     # OIDCプロバイダー作成補助
 ├── docs/
-│   └── ssm-connection-guide.md        # SSM接続ガイド
+│   └── ssm-connection-guide.md         # SSM接続ガイド
 ├── .github/workflows/
 │   └── deploy.yml                      # GitHub Actionsワークフロー
-├── appspec.yml                         # CodeDeploy設定
-├── index.html                          # サンプルWebアプリケーション
 ├── package.json
 ├── tsconfig.json
 ├── cdk.json
@@ -195,59 +204,70 @@ aws ssm start-session --target $INSTANCE_ID
 ## デプロイメントフロー
 
 1. **GitHub Actions**がコード変更を検知
-2. アプリケーションをビルド・パッケージ化
-3. S3 バケットにアーティファクトをアップロード
-4. OIDC ロールで AWS に認証
-5. CodeDeploy で EC2 Auto Scaling グループにデプロイ
-6. デプロイメント検証
+2. Docker イメージをビルド
+3. ECR にイメージをプッシュ
+4. SSM コマンドで Auto Scaling Group の各インスタンスにデプロイ
+5. 各インスタンスで Docker コンテナを更新・再起動
 
-## 運用・監視
+## ローカル開発
 
-### CloudWatch Logs
+### Docker での実行
 
-- アプリケーションログ: `/aws/ec2/{appName}`
-- ALB ログ: 自動的に有効化
+```bash
+# アプリケーションをビルド
+cd app
+docker build -t poc-app .
 
-### Auto Scaling
+# Docker Compose で実行
+docker-compose up -d
 
-- CPU 使用率 70%でスケールアウト
-- スケールイン/アウトのクールダウン時間設定済み
+# アプリケーションにアクセス
+curl http://localhost:8080/api/health
+```
 
-### セキュリティ
+### 手動デプロイ
 
-- SSH ポートは閉鎖
-- SSM Session Manager 経由でのみ EC2 アクセス
-- 最小権限の原則に従った IAM ロール
+```bash
+# 環境変数を設定
+export APP_NAME="myapp"
+export AWS_REGION="ap-northeast-1"
+export ECR_REPOSITORY_URI="your-ecr-repository-uri"
+export IMAGE_TAG="latest"
 
-## コスト最適化
-
-- NAT Gateway を 1 つに制限
-- Auto Scaling でインスタンス数を動的調整
-- S3 ライフサイクルルールで古いバージョンを自動削除
+# デプロイスクリプトを実行
+./scripts/deploy.sh
+```
 
 ## トラブルシューティング
 
 ### よくある問題
 
-1. **デプロイメント失敗**
+1. **ECR ログインエラー**
 
-   - CodeDeploy ログを確認
-   - EC2 インスタンスのヘルスチェック状態を確認
+   - EC2 インスタンスの IAM ロールに ECR 権限があることを確認
+   - リージョンが正しく設定されていることを確認
 
-2. **Auto Scaling が動作しない**
+2. **Docker コンテナが起動しない**
 
-   - CloudWatch メトリクスを確認
-   - Auto Scaling ポリシーの設定を確認
+   - SSM でインスタンスに接続してログを確認
+   - `docker logs <container-name>` でコンテナログを確認
 
-3. **SSL 証明書エラー**
+3. **ヘルスチェックが失敗する**
+   - アプリケーションが正しく起動していることを確認
+   - ポート 8080 が正しく公開されていることを確認
 
-   - ACM 証明書の検証状態を確認
-   - Route 53 の設定を確認
+### ログの確認
 
-4. **SSM 接続できない**
-   - インスタンスの SSM エージェント状態を確認
-   - IAM 権限を確認
-   - ネットワーク設定（NAT Gateway/VPC エンドポイント）を確認
+```bash
+# EC2 インスタンスに接続
+./scripts/connect-to-asg.sh
+
+# Docker コンテナのログを確認
+docker logs myapp-app
+
+# アプリケーションログを確認
+docker exec myapp-app tail -f /var/log/app.log
+```
 
 ## ライセンス
 

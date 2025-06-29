@@ -2,14 +2,13 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import { createGithubOidcRole } from "./oidc-for-github";
 import {
-  S3Construct,
+  EcrConstruct,
   NetworkConstruct,
   IamConstruct,
   Ec2Construct,
   AutoscalingConstruct,
   LoadbalancerConstruct,
   DnsConstruct,
-  CodedeployConstruct,
   MonitoringConstruct,
 } from "./construct";
 
@@ -21,11 +20,9 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     const domainName = this.node.tryGetContext("domainName") || "example.com";
     const appName = this.node.tryGetContext("appName") || "myapp";
 
-    // Create S3 construct
-    const s3Construct = new S3Construct(this, "S3Construct", {
+    // Create ECR construct
+    const ecrConstruct = new EcrConstruct(this, "EcrConstruct", {
       appName,
-      account: this.account,
-      region: this.region,
     });
 
     // Create Network construct
@@ -36,7 +33,6 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     // Create IAM construct
     const iamConstruct = new IamConstruct(this, "IamConstruct", {
       appName,
-      deploymentBucket: s3Construct.deploymentBucket,
     });
 
     // Create EC2 construct
@@ -71,17 +67,11 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     // Create Route 53 A Record after ALB is created
     const aliasRecord = dnsConstruct.createAliasRecord(loadbalancerConstruct.alb);
 
-    // Create CodeDeploy construct
-    const codedeployConstruct = new CodedeployConstruct(this, "CodedeployConstruct", {
-      appName,
-      asg: autoscalingConstruct.asg,
-    });
-
     // Create Monitoring construct
     const monitoringConstruct = new MonitoringConstruct(this, "MonitoringConstruct", {
       appName,
       domainName,
-      deploymentBucket: s3Construct.deploymentBucket,
+      ecrRepository: ecrConstruct.repository,
     });
 
     // ===== OIDC Configuration (統合版) =====
@@ -89,9 +79,7 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
     const githubActionsRole = createGithubOidcRole(this, {
       githubOwner,
       appName,
-      deploymentBucket: s3Construct.deploymentBucket,
-      codeDeployApp: codedeployConstruct.codeDeployApp,
-      codeDeployDeploymentGroup: codedeployConstruct.deploymentGroup,
+      ecrRepository: ecrConstruct.repository,
       logGroup: monitoringConstruct.logGroup,
       region: this.region,
       account: this.account,
@@ -103,9 +91,9 @@ export class PocEc2AutoScalingStack extends cdk.Stack {
       description: "DNS name of the Application Load Balancer",
     });
 
-    new cdk.CfnOutput(this, "DeploymentBucketName", {
-      value: s3Construct.deploymentBucket.bucketName,
-      description: "Name of the S3 bucket for deployment artifacts",
+    new cdk.CfnOutput(this, "ECRRepositoryUri", {
+      value: ecrConstruct.repository.repositoryUri,
+      description: "URI of the ECR repository",
     });
 
     new cdk.CfnOutput(this, "ApplicationURL", {

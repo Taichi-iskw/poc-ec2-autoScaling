@@ -2,6 +2,8 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as fs from "fs";
+import * as path from "path";
 
 export interface Ec2ConstructProps {
   appName: string;
@@ -15,29 +17,67 @@ export class Ec2Construct extends Construct {
   constructor(scope: Construct, id: string, props: Ec2ConstructProps) {
     super(scope, id);
 
-    // User Data script for EC2 instances
+    // Read docker-compose.yml content
+    const dockerComposePath = path.join(__dirname, "../../app/docker-compose.yml");
+    const dockerComposeContent = fs.readFileSync(dockerComposePath, "utf8");
+
+    // Read deploy script content
+    const deployScriptPath = path.join(__dirname, "../../scripts/ec2-deploy.sh");
+    const deployScriptContent = fs.readFileSync(deployScriptPath, "utf8");
+
+    // User Data script for EC2 instances with Docker
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
       "#!/bin/bash",
+      "set -e",
+      "exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1",
+      "echo 'Starting user data script...'",
+      "",
+      "# System updates and basic packages",
       "yum update -y",
-      "yum install -y python3 python3-pip git curl",
-      "pip3 install --upgrade pip",
-      // Install uv
-      "curl -LsSf https://astral.sh/uv/install.sh | sh",
-      "source /home/ec2-user/.cargo/env",
-      // Install CodeDeploy agent
-      "yum install -y ruby wget",
-      "wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install",
-      "chmod +x ./install",
-      "./install auto",
-      "systemctl start codedeploy-agent",
-      "systemctl enable codedeploy-agent",
-      // Set instance metadata
+      "yum install -y docker git curl wget",
+      "",
+      "# Start and enable Docker service",
+      "systemctl start docker",
+      "systemctl enable docker",
+      "",
+      "# Install docker-compose",
+      'curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose',
+      "chmod +x /usr/local/bin/docker-compose",
+      "",
+      "# Add ec2-user to docker group",
+      "usermod -a -G docker ec2-user",
+      "sudo chmod 666 /var/run/docker.sock",
+      "",
+      "# Set instance metadata",
       "export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
       "export AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
       "echo 'export INSTANCE_ID=$INSTANCE_ID' >> /home/ec2-user/.bashrc",
       "echo 'export AWS_REGION=$AWS_REGION' >> /home/ec2-user/.bashrc",
-      "echo 'source /home/ec2-user/.cargo/env' >> /home/ec2-user/.bashrc"
+      "echo 'export INSTANCE_ID=$INSTANCE_ID' >> /etc/environment",
+      "echo 'export AWS_REGION=$AWS_REGION' >> /etc/environment",
+      "",
+      "# Create app directory",
+      "mkdir -p /opt/app",
+      "chown ec2-user:ec2-user /opt/app",
+      "",
+      "# Create docker-compose.yml from template",
+      `cat > /opt/app/docker-compose.yml << 'EOF'`,
+      dockerComposeContent,
+      "EOF",
+      "",
+      "# Create deploy script from template",
+      `cat > /opt/app/deploy.sh << 'DEPLOY_EOF'`,
+      deployScriptContent,
+      "DEPLOY_EOF",
+      "chmod +x /opt/app/deploy.sh",
+      "",
+      "# Final status check",
+      "echo 'User data script completed successfully'",
+      "echo 'Docker status:'",
+      "systemctl status docker --no-pager",
+      "echo 'Instance ID: $INSTANCE_ID'",
+      "echo 'Region: $AWS_REGION'"
     );
 
     // Launch Template

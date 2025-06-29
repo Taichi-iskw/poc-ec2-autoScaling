@@ -1,11 +1,9 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as s3 from "aws-cdk-lib/aws-s3";
 
 export interface IamConstructProps {
   appName: string;
-  deploymentBucket: s3.Bucket;
 }
 
 export class IamConstruct extends Construct {
@@ -24,19 +22,36 @@ export class IamConstruct extends Construct {
       ],
     });
 
-    // Add custom policies for S3, SSM, and CloudWatch Logs
+    // Add ECR permissions for pulling Docker images
     this.ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["s3:GetObject", "s3:ListBucket"],
-        resources: [props.deploymentBucket.bucketArn, `${props.deploymentBucket.bucketArn}/*`],
+        actions: [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+        ],
+        resources: ["*"],
       })
     );
 
+    // Add CloudWatch Logs permissions
     this.ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"],
+        resources: ["*"],
+      })
+    );
+
+    // Add SSM permissions for deployment commands
+    this.ec2Role.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["ssm:SendCommand", "ssm:GetCommandInvocation", "ssm:ListCommandInvocations"],
         resources: ["*"],
       })
     );

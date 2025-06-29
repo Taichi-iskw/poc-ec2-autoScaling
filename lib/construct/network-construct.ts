@@ -35,7 +35,7 @@ export class NetworkConstruct extends Construct {
       allowAllOutbound: true,
     });
 
-    // Allow traffic from ALB to EC2 instances
-    this.ec2SecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.tcp(80), "Allow HTTP from ALB");
+    // Allow traffic from ALB to EC2 instances on port 8080 (where Flask app runs)
+    this.ec2SecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.tcp(8080), "Allow HTTP from ALB to Flask app");
   }
 }
